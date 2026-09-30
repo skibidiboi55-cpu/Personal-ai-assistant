@@ -23,7 +23,7 @@ A small, real-model personal AI assistant with a provider-agnostic backend.
    npm start
    ```
    Keep this PowerShell window open while using the app.
-5. In Chrome or Edge, open **http://localhost:3000**.
+5. Open the URL printed by the server in Chrome or Edge. It normally uses **http://localhost:3000**. If that port is busy, the app automatically tries the next ports (up to 20 higher) and prints the URL it selected.
 
 The app has no npm package dependencies, so `npm install` is not needed. For automatic server restarts while editing, use `npm run dev` instead.
 
@@ -31,7 +31,7 @@ API keys are read by the server from `.env`. They are never included in the fron
 
 ## Other platforms
 
-Install Node.js 20+, copy `.env.example` to `.env`, add your provider key, and run `npm start`. Then open **http://localhost:3000** in your browser.
+Install Node.js 20+, copy `.env.example` to `.env`, add your provider key, and run `npm start`. Open the URL printed by the server in your browser. If the selected port is busy, the app automatically tries the following ports.
 
 ## Next steps
 
