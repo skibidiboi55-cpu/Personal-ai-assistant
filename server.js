@@ -149,7 +149,7 @@ const server = http.createServer(async (req, res) => {
     } catch {
       return json(res, 400, { error: "Invalid URL path" });
     }
-    const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+    const relativePath = pathname === "/" ? "index.html" : (pathname.startsWith("/") ? pathname.slice(1) : pathname);
     const filePath = resolve(publicDir, relativePath);
     if (!filePath.startsWith(publicDir + sep)) {
       return json(res, 403, { error: "Forbidden" });
@@ -165,7 +165,22 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const port = Number(process.env.PORT || 3000);
-server.listen(port, () => {
-  console.log(`Personal AI Assistant running at http://localhost:${port}`);
-});
+const firstPort = Number(process.env.PORT || 3000);
+const lastPort = firstPort + 20;
+
+function listenOn(port) {
+  server.once("error", (error) => {
+    if (error.code === "EADDRINUSE" && port < lastPort) {
+      console.warn(`Port ${port} is already in use; trying ${port + 1}.`);
+      return listenOn(port + 1);
+    }
+    console.error(`Could not start the server on ports ${firstPort}-${port}: ${error.message}`);
+    process.exitCode = 1;
+  });
+  server.listen(port, () => {
+    const actualPort = server.address().port;
+    console.log(`Personal AI Assistant running at http://localhost:${actualPort}`);
+  });
+}
+
+listenOn(firstPort);
