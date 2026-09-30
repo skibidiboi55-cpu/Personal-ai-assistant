@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Personal AI Assistant</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="orb"></span><div><strong>Personal AI</strong><small>Assistant</small></div></div>
+      <button id="newChat" class="new-chat">＋ New chat</button>
+      <div class="side-note">Your conversations stay in this browser for now.</div>
+      <div class="status"><span id="dot"></span><span id="statusText">Connecting…</span></div>
+    </aside>
+    <section class="chat">
+      <header>
+        <div><h1>What can I help with?</h1><p id="modelLabel">Loading model…</p></div>
+        <select id="model" aria-label="Model"></select>
+      </header>
+      <div id="messages" class="messages"></div>
+      <form id="composer" class="composer">
+        <textarea id="input" rows="1" placeholder="Message your assistant…" autocomplete="off"></textarea>
+        <button id="send" type="submit" aria-label="Send">↑</button>
+      </form>
+      <div class="hint">Enter to send · Shift+Enter for a new line</div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
