@@ -39,13 +39,14 @@
       </div>
       <label for="providerInput">Provider</label>
       <select id="providerInput" name="provider">
+        <option value="opencode">OpenCode CLI (use saved sign-in)</option>
         <option value="openrouter">OpenRouter</option>
         <option value="openai-compatible">OpenAI-compatible API</option>
         <option value="ollama">Ollama (local)</option>
       </select>
-      <label for="apiKeyInput">API key</label>
+      <label id="apiKeyLabel" for="apiKeyInput">API key</label>
       <input id="apiKeyInput" name="apiKey" type="password" autocomplete="new-password" placeholder="Paste your provider key">
-      <p class="field-note">Saved in the local server’s .env file. It is never sent back to the browser.</p>
+      <p id="apiKeyNote" class="field-note">Saved in the local server’s .env file. It is never sent back to the browser.</p>
       <label id="baseUrlLabel" for="baseUrlInput">API base URL</label>
       <input id="baseUrlInput" name="baseUrl" type="url" placeholder="https://api.openai.com/v1">
       <label for="settingsModel">Model</label>
@@ -55,7 +56,7 @@
         <span id="modelDiscoveryStatus">Looking for OpenCode CLI models…</span>
         <button id="refreshModels" class="refresh-models" type="button">Refresh</button>
       </div>
-      <p class="field-note">Models come from <code>opencode models</code>. The API key above is used for chat.</p>
+      <p id="modelProviderNote" class="field-note">Models come from <code>opencode models</code>. The API key above is used for chat.</p>
       <label class="clear-key"><input id="clearKeyInput" type="checkbox" name="clearKey"> Remove the saved key for this provider</label>
       <div id="settingsError" class="settings-error" role="alert"></div>
       <div class="settings-actions">

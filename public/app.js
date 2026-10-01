@@ -9,7 +9,9 @@ const dot = document.querySelector("#dot");
 const settingsDialog = document.querySelector("#settingsDialog");
 const settingsForm = document.querySelector("#settingsForm");
 const providerInput = document.querySelector("#providerInput");
+const apiKeyLabel = document.querySelector("#apiKeyLabel");
 const apiKeyInput = document.querySelector("#apiKeyInput");
+const apiKeyNote = document.querySelector("#apiKeyNote");
 const baseUrlInput = document.querySelector("#baseUrlInput");
 const baseUrlLabel = document.querySelector("#baseUrlLabel");
 const settingsModel = document.querySelector("#settingsModel");
@@ -17,11 +19,21 @@ const modelOptions = document.querySelector("#modelOptions");
 const modelDiscoveryStatus = document.querySelector("#modelDiscoveryStatus");
 const settingsError = document.querySelector("#settingsError");
 const clearKeyInput = document.querySelector("#clearKeyInput");
+const clearKeyLabel = document.querySelector(".clear-key");
+const modelProviderNote = document.querySelector("#modelProviderNote");
 
 let messages = [];
-let currentConfig = { provider: "openrouter", model: "google/gemini-2.5-flash", baseUrl: "" };
+let currentConfig = { provider: "opencode", model: "openrouter/auto", baseUrl: "" };
 let discoveredModels = [];
 let openCodeDefaultModel = null;
+const conversationIdStorageKey = "personal-ai-conversation-id";
+
+function createConversationId() {
+  return window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+let conversationId = localStorage.getItem(conversationIdStorageKey) || createConversationId();
+localStorage.setItem(conversationIdStorageKey, conversationId);
 
 try {
   messages = JSON.parse(localStorage.getItem("personal-ai-messages") || "[]");
@@ -61,11 +73,13 @@ function addMessage(role, content) {
 }
 
 function providerPrefix(provider) {
+  if (provider === "opencode") return "";
   if (provider === "openai-compatible") return "openai/";
   return `${provider}/`;
 }
 
 function modelsForProvider(provider) {
+  if (provider === "opencode") return discoveredModels;
   const prefix = providerPrefix(provider);
   const matching = discoveredModels.filter((id) => id.startsWith(prefix));
   return matching.length ? matching : discoveredModels;
@@ -101,16 +115,27 @@ function populateSettingsModels(preferredModel = settingsModel.value) {
 }
 
 function updateProviderFields() {
-  const customProvider = providerInput.value !== "openrouter";
+  const isOpenCode = providerInput.value === "opencode";
+  const customProvider = providerInput.value !== "openrouter" && !isOpenCode;
   baseUrlInput.classList.toggle("base-url-hidden", !customProvider);
   baseUrlLabel.classList.toggle("base-url-hidden", !customProvider);
   baseUrlInput.placeholder = providerInput.value === "ollama"
     ? "http://127.0.0.1:11434/v1"
     : "https://api.openai.com/v1";
-  const needsKey = providerInput.value !== "ollama";
+  const needsKey = providerInput.value !== "ollama" && !isOpenCode;
+  apiKeyLabel.classList.toggle("base-url-hidden", !needsKey);
   apiKeyInput.disabled = !needsKey;
-  apiKeyInput.placeholder = needsKey ? "Paste your provider key" : "Ollama does not require a key";
+  apiKeyInput.classList.toggle("base-url-hidden", !needsKey);
+  apiKeyInput.placeholder = needsKey ? "Paste your provider key" : isOpenCode ? "Uses your OpenCode CLI sign-in" : "Ollama does not require a key";
+  apiKeyNote.textContent = isOpenCode
+    ? "Uses the provider already signed in to your OpenCode CLI. No separate API key is needed."
+    : "Saved in the local server’s .env file. It is never sent back to the browser.";
+  apiKeyNote.classList.toggle("base-url-hidden", !needsKey && !isOpenCode);
   clearKeyInput.disabled = !needsKey;
+  clearKeyLabel.classList.toggle("base-url-hidden", !needsKey);
+  modelProviderNote.textContent = isOpenCode
+    ? "Models and the default come from your OpenCode CLI sign-in."
+    : "Models come from `opencode models`. The API key above is used for chat.";
   populateSettingsModels();
 }
 
@@ -122,7 +147,8 @@ async function loadModels(refresh = false) {
     discoveredModels = Array.isArray(result.models) ? result.models : [];
     openCodeDefaultModel = result.defaultModel || null;
     if (result.available) {
-      modelDiscoveryStatus.textContent = `${discoveredModels.length} models found${openCodeDefaultModel ? ` · default: ${openCodeDefaultModel}` : ""}`;
+      const loginStatus = result.authenticated ? " · CLI signed in" : " · run opencode auth login to sign in";
+      modelDiscoveryStatus.textContent = `${discoveredModels.length} OpenCode models found${openCodeDefaultModel ? ` · default: ${openCodeDefaultModel}` : ""}${loginStatus}`;
     } else {
       modelDiscoveryStatus.textContent = result.error || "OpenCode CLI models unavailable; enter a model ID manually.";
     }
@@ -137,7 +163,9 @@ async function loadConfig() {
   try {
     const response = await fetch("/api/config");
     currentConfig = await response.json();
-    statusText.textContent = currentConfig.configured ? "Model ready" : "Add an API key in Settings";
+    statusText.textContent = currentConfig.configured
+      ? "Model ready"
+      : currentConfig.provider === "opencode" ? "Sign in with OpenCode CLI" : "Add an API key in Settings";
     dot.style.background = currentConfig.configured ? "#7cffaa" : "#ffbd66";
     providerInput.value = currentConfig.provider;
     baseUrlInput.value = currentConfig.baseUrl || "";
@@ -213,7 +241,7 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, model: modelSelect.value }),
+      body: JSON.stringify({ messages, model: modelSelect.value, conversationId }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Request failed");
@@ -238,6 +266,8 @@ input.addEventListener("input", () => {
 });
 document.querySelector("#newChat").addEventListener("click", () => {
   messages = [];
+  conversationId = createConversationId();
+  localStorage.setItem(conversationIdStorageKey, conversationId);
   saveMessages();
   renderMessages();
   input.focus();

@@ -1,8 +1,8 @@
 import http from "node:http";
-import { readFile, writeFile } from "node:fs/promises";
-import { execFile } from "node:child_process";
+import { readFile, writeFile, mkdtemp } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,10 +29,13 @@ async function loadEnv() {
 
 await loadEnv();
 
-let provider = process.env.AI_PROVIDER || "openrouter";
-let model = process.env.AI_MODEL || "google/gemini-2.5-flash";
+let provider = process.env.AI_PROVIDER || "opencode";
+let model = process.env.AI_MODEL || (await readOpenCodeDefaultModel()) || "openrouter/auto";
 
 let modelCache = { expiresAt: 0, value: null };
+let openCodeAuthCache = { expiresAt: 0, value: null };
+const openCodeSessions = new Map();
+let openCodeSandboxPromise;
 
 function stripJsonComments(text) {
   let output = "";
@@ -105,7 +108,15 @@ async function getOpenCodeModels(refresh = false) {
     });
     const models = [...new Set(stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => /^[^/\s]+\/.+/.test(line)))];
     const defaultModel = await readOpenCodeDefaultModel();
-    const result = { available: true, models, defaultModel, error: null };
+    const auth = await getOpenCodeAuth(refresh);
+    const result = {
+      available: true,
+      models,
+      defaultModel,
+      authenticated: auth.authenticated,
+      connectedProviders: auth.connectedProviders,
+      error: null,
+    };
     modelCache = { value: result, expiresAt: Date.now() + 60_000 };
     return result;
   } catch (error) {
@@ -113,15 +124,176 @@ async function getOpenCodeModels(refresh = false) {
       available: false,
       models: [],
       defaultModel: null,
-      error: error.code === "ENOENT" ? "OpenCode CLI was not found on PATH." : "Could not read models from OpenCode CLI.",
+      authenticated: false,
+      connectedProviders: [],
+      error: error.code === "ENOENT"
+        ? "OpenCode CLI was not found on PATH."
+        : `Could not read models from OpenCode CLI (${error.code || error.name || "unknown error"}).`,
     };
     modelCache = { value: result, expiresAt: Date.now() + 15_000 };
     return result;
   }
 }
 
+async function getOpenCodeAuth(refresh = false) {
+  if (!refresh && openCodeAuthCache.value && openCodeAuthCache.expiresAt > Date.now()) {
+    return openCodeAuthCache.value;
+  }
+  try {
+    const { stdout } = await execFileAsync("opencode", ["auth", "list", "--format", "json"], {
+      encoding: "utf8",
+      timeout: 15_000,
+      maxBuffer: 1_000_000,
+      windowsHide: true,
+      shell: process.platform === "win32",
+    });
+    const entries = JSON.parse(stdout);
+    const connectedProviders = (Array.isArray(entries) ? entries : [])
+      .filter((entry) => entry && entry.id && entry.connections &&
+        (Array.isArray(entry.connections) ? entry.connections.length : Object.keys(entry.connections).length))
+      .map((entry) => String(entry.id));
+    const value = { authenticated: connectedProviders.length > 0, connectedProviders };
+    openCodeAuthCache = { value, expiresAt: Date.now() + 30_000 };
+    return value;
+  } catch {
+    const value = { authenticated: false, connectedProviders: [] };
+    openCodeAuthCache = { value, expiresAt: Date.now() + 10_000 };
+    return value;
+  }
+}
+
+async function getOpenCodeSandbox() {
+  if (!openCodeSandboxPromise) {
+    openCodeSandboxPromise = (async () => {
+      const directory = await mkdtemp(join(tmpdir(), "personal-ai-assistant-opencode-"));
+      const config = {
+        $schema: "https://opencode.ai/config.json",
+        permissions: [{ action: "*", resource: "*", effect: "deny" }],
+        agents: {
+          "personal-assistant-chat": {
+            description: "Chat-only assistant with no local tools",
+            mode: "primary",
+            system: "You are a helpful personal AI assistant. Answer the conversation directly and do not use tools.",
+            permissions: [{ action: "*", resource: "*", effect: "deny" }],
+          },
+        },
+      };
+      await writeFile(join(directory, "opencode.json"), JSON.stringify(config, null, 2), {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      return directory;
+    })();
+  }
+  return openCodeSandboxPromise;
+}
+
+function runOpenCode(args, prompt, cwd) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn("opencode", args, {
+        cwd,
+        windowsHide: true,
+        shell: process.platform === "win32",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch {
+      reject(new Error("Could not start OpenCode CLI. Check that it is installed and available on PATH."));
+      return;
+    }
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(new Error("OpenCode took too long to respond. Try again or choose a faster model."));
+    }, 180_000);
+    function finish(error, output) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(output);
+    }
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      if (stdout.length > 8_000_000) {
+        child.kill();
+        finish(new Error("OpenCode returned too much output."));
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+      if (stderr.length > 1_000_000) stderr = stderr.slice(-1_000_000);
+    });
+    child.stdin.on("error", () => {});
+    child.on("error", () => finish(new Error("Could not start OpenCode CLI. Check that it is installed and available on PATH.")));
+    child.on("close", (code) => {
+      if (settled) return;
+      if (code !== 0) {
+        const detail = stderr.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1);
+        finish(new Error(detail ? detail.replace(/(?:sk-[A-Za-z0-9_-]{12,}|Bearer\s+\S+)/gi, "[hidden credential]").slice(0, 350) : "OpenCode could not complete the request. Check your CLI sign-in and selected model."));
+      } else {
+        finish(null, stdout);
+      }
+    });
+    child.stdin.end(prompt);
+  });
+}
+
+async function chatWithOpenCode(messages, selectedModel, conversationId) {
+  const models = await getOpenCodeModels();
+  if (!models.available) throw new Error(models.error || "OpenCode CLI was not found on PATH.");
+  if (!models.authenticated) {
+    throw new Error("OpenCode has no signed-in model provider. In PowerShell, run `opencode auth login`, then retry.");
+  }
+  const selected = selectedModel || models.defaultModel || model;
+  if (!models.models.includes(selected) || !/^[A-Za-z0-9_.@~-]+\/[A-Za-z0-9_.:@/+~\-]+(?:#[A-Za-z0-9_-]+)?$/.test(selected)) {
+    throw new Error("That model is not in the OpenCode CLI model list. Refresh models in Settings and choose one of the listed models.");
+  }
+
+  const validConversationId = typeof conversationId === "string" && /^[A-Za-z0-9-]{8,80}$/.test(conversationId)
+    ? conversationId
+    : null;
+  const sessionId = validConversationId ? openCodeSessions.get(validConversationId) : null;
+  const prompt = sessionId
+    ? messages.filter((item) => item.role === "user").at(-1)?.content
+    : [
+        "Use the following labeled messages as the conversation history. Reply to the latest user message. Do not execute actions or use tools.",
+        ...messages.map((item) => `${item.role === "assistant" ? "Assistant" : item.role === "system" ? "System" : "User"}:\n${item.content}`),
+      ].join("\n\n");
+  if (!prompt) throw new Error("Add a user message before sending.");
+
+  const sandbox = await getOpenCodeSandbox();
+  const args = ["run", "--format", "json", "--model", selected, "--agent", "personal-assistant-chat"];
+  if (sessionId) args.push("--session", sessionId);
+  const output = await runOpenCode(args, prompt, sandbox);
+  const events = output.split(/\r?\n/).map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+  const responseText = events
+    .filter((event) => event.type === "text" && typeof event.part?.text === "string")
+    .map((event) => event.part.text)
+    .join("");
+  const createdSession = events.find((event) => typeof event.sessionID === "string" && /^ses_[A-Za-z0-9_-]{8,100}$/.test(event.sessionID))?.sessionID;
+  if (validConversationId && createdSession) openCodeSessions.set(validConversationId, createdSession);
+  const eventError = events.find((event) => event.type === "error")?.error;
+  if (!responseText && eventError) {
+    const detail = eventError?.data?.message || eventError?.message;
+    throw new Error(typeof detail === "string" ? detail.slice(0, 350) : "OpenCode could not complete the request.");
+  }
+  if (!responseText.trim()) {
+    throw new Error("OpenCode returned no text. Check your CLI sign-in and selected model, then try again.");
+  }
+  return { message: responseText, model: selected, usage: null };
+}
+
 async function saveSettings(input) {
-  const nextProvider = ["openrouter", "openai-compatible", "ollama"].includes(input.provider)
+  const nextProvider = ["opencode", "openrouter", "openai-compatible", "ollama"].includes(input.provider)
     ? input.provider
     : null;
   if (!nextProvider) throw Object.assign(new Error("Choose a supported provider."), { status: 400 });
@@ -134,11 +306,11 @@ async function saveSettings(input) {
   if (nextProvider === "openrouter") {
     if (typeof input.apiKey === "string" && input.apiKey.trim()) updates.OPENROUTER_API_KEY = input.apiKey.trim();
     else if (clearKey) updates.OPENROUTER_API_KEY = "";
-  } else if (nextProvider !== "ollama") {
+  } else if (nextProvider === "openai-compatible") {
     if (typeof input.apiKey === "string" && input.apiKey.trim()) updates.AI_API_KEY = input.apiKey.trim();
     else if (clearKey) updates.AI_API_KEY = "";
   }
-  if (nextProvider !== "openrouter" && typeof input.baseUrl === "string" && input.baseUrl.trim()) {
+  if (["openai-compatible", "ollama"].includes(nextProvider) && typeof input.baseUrl === "string" && input.baseUrl.trim()) {
     try {
       const parsed = new URL(input.baseUrl.trim());
       if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error();
@@ -170,7 +342,17 @@ async function saveSettings(input) {
   provider = nextProvider;
   model = nextModel;
   modelCache = { expiresAt: 0, value: null };
-  return { configured: Boolean(provider === "ollama" || (provider === "openrouter" ? process.env.OPENROUTER_API_KEY : process.env.AI_API_KEY)), provider, model };
+  openCodeAuthCache = { expiresAt: 0, value: null };
+  return { configured: await providerIsConfigured(), provider, model };
+}
+
+async function providerIsConfigured() {
+  if (provider === "ollama") return true;
+  if (provider === "opencode") {
+    const status = await getOpenCodeAuth();
+    return status.authenticated;
+  }
+  return Boolean(provider === "openrouter" ? process.env.OPENROUTER_API_KEY : process.env.AI_API_KEY);
 }
 
 function providerConfig() {
@@ -216,7 +398,10 @@ async function readBody(req) {
   }
 }
 
-async function chat(messages, selectedModel) {
+async function chat(messages, selectedModel, conversationId) {
+  if (provider === "opencode") {
+    return chatWithOpenCode(messages, selectedModel, conversationId);
+  }
   const config = providerConfig();
   if (!config.apiKey && provider !== "ollama") {
     throw new Error("No API key configured. Copy .env.example to .env and add your provider key.");
@@ -271,8 +456,8 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         provider,
         model,
-        baseUrl: provider === "openrouter" ? "https://openrouter.ai/api/v1" : (process.env.AI_BASE_URL || (provider === "ollama" ? "http://127.0.0.1:11434/v1" : "https://api.openai.com/v1")),
-        configured: Boolean(provider === "ollama" || providerConfig().apiKey),
+        baseUrl: provider === "opencode" ? "" : provider === "openrouter" ? "https://openrouter.ai/api/v1" : (process.env.AI_BASE_URL || (provider === "ollama" ? "http://127.0.0.1:11434/v1" : "https://api.openai.com/v1")),
+        configured: await providerIsConfigured(),
       });
     }
 
@@ -294,7 +479,7 @@ const server = http.createServer(async (req, res) => {
       } else if (provider === "openai-compatible" && selectedModel.startsWith("openai/")) {
         selectedModel = selectedModel.slice("openai/".length);
       }
-      return json(res, 200, await chat(messages, selectedModel));
+      return json(res, 200, await chat(messages, selectedModel, input.conversationId));
     }
 
     if (url.pathname.startsWith("/api/")) {
@@ -329,19 +514,34 @@ const server = http.createServer(async (req, res) => {
 const firstPort = Number(process.env.PORT || 3000);
 const lastPort = firstPort + 20;
 
-function listenOn(port) {
-  server.once("error", (error) => {
-    if (error.code === "EADDRINUSE" && port < lastPort) {
-      console.warn(`Port ${port} is already in use; trying ${port + 1}.`);
-      return listenOn(port + 1);
+async function listenOnAvailablePort() {
+  for (let port = firstPort; port <= lastPort; port++) {
+    try {
+      await new Promise((resolveListen, rejectListen) => {
+        const onError = (error) => {
+          server.removeListener("listening", onListening);
+          rejectListen(error);
+        };
+        const onListening = () => {
+          server.removeListener("error", onError);
+          resolveListen();
+        };
+        server.once("error", onError);
+        server.once("listening", onListening);
+        server.listen(port, "127.0.0.1");
+      });
+      console.log(`Personal AI Assistant running at http://localhost:${server.address().port}`);
+      return;
+    } catch (error) {
+      if (error.code === "EADDRINUSE" && port < lastPort) {
+        console.warn(`Port ${port} is already in use; trying ${port + 1}.`);
+        continue;
+      }
+      console.error(`Could not start the server on ports ${firstPort}-${port}: ${error.message}`);
+      process.exitCode = 1;
+      return;
     }
-    console.error(`Could not start the server on ports ${firstPort}-${port}: ${error.message}`);
-    process.exitCode = 1;
-  });
-  server.listen(port, "127.0.0.1", () => {
-    const actualPort = server.address().port;
-    console.log(`Personal AI Assistant running at http://localhost:${actualPort}`);
-  });
+  }
 }
 
-listenOn(firstPort);
+listenOnAvailablePort();
