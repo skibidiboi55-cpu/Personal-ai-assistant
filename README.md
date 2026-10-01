@@ -1,35 +1,43 @@
 # Personal AI Assistant
 
-A small, real-model personal AI assistant with a provider-agnostic backend.
+A local-first assistant with model choice, a searchable chat library, optional voice dictation, and text-file context.
 
-## Providers
+## What it can do
 
-- OpenCode CLI sign-in (no separate API key)
-- OpenRouter
-- OpenAI-compatible APIs
-- Ollama (local models)
+- Use OpenCode CLI with its existing sign-in, or connect OpenRouter, another OpenAI-compatible API, or Ollama.
+- Discover models from OpenCode and choose a model per conversation.
+- Keep, search, rename, delete, and export conversations in this browser.
+- Save personal instructions in this browser and include them with your prompts.
+- Attach up to five small text, code, JSON, Markdown, or CSV files to a message.
+- Read assistant Markdown and code blocks safely, and copy answers or code with one click.
+- Dictate a message in supported browsers after pressing the microphone button.
+- Listen to an answer using browser speech synthesis after pressing **Listen**.
+- Turn on **Search the web for this reply** for OpenCode web research. It resets after each send; web search needs a configured OpenCode search provider and may incur provider or workspace charges.
 
 ## Run on Windows
 
 1. Install [Node.js 20 or newer](https://nodejs.org/).
 2. Open PowerShell in the project folder.
-3. Start the app:
+3. Run:
    ```powershell
    npm start
    ```
-   Keep this PowerShell window open while using the app.
-4. Open the URL printed by the server in Chrome or Edge. It normally uses **http://localhost:3000**. If that port is busy, the app automatically tries the next ports (up to 20 higher) and prints the URL it selected.
-5. Choose **OpenCode CLI** in Settings to use the account and models already configured in OpenCode. If you have not signed in yet, run `opencode auth login` once in PowerShell and then click **Refresh** in Settings. No API key is entered into this app.
-6. To use another provider instead, choose it in Settings and enter its API key. The app saves that key to the local `.env` file, which is excluded from Git.
+   Keep this window open while using the app. There are no npm package dependencies, so `npm install` is not needed.
+4. Open the URL printed by the server in Chrome or Edge. It normally uses **http://localhost:3000**. If that port is busy, the app tries the next 20 ports and prints the URL it selected.
+5. In Settings, choose **OpenCode CLI** to use the account already signed in through OpenCode. If needed, sign in once from PowerShell with `opencode auth login`, then click **Refresh** in Settings. No separate API key is required for this provider.
 
-The app has no npm package dependencies, so `npm install` is not needed. For automatic server restarts while editing, use `npm run dev` instead.
+For automatic restarts while editing, run `npm run dev` instead.
 
-OpenCode sign-in stays in OpenCode's local credential store. This app runs the CLI on the local server and never sends its saved credentials to the browser. Chat requests use a restricted OpenCode agent with tools disabled. For other providers, API keys stay on the local server and are never returned to the browser. To fill the model picker automatically, install and configure the [OpenCode CLI](https://opencode.ai/v2/docs/cli) so `opencode models` works from PowerShell. The picker reads the model list and configured default from OpenCode.
+## Your data and credentials
+
+Conversation history and personal instructions are stored in this browser’s local storage. Use **Export all** in the sidebar to download a backup, or **Export this chat** to save one conversation as Markdown. **Clear all chats** removes the locally saved conversation history.
+
+When you send a message, its text and any attached file contents are sent to the selected model provider to generate a reply. Attachments are read in the browser and are not sent until you send the message. Microphone access starts only after you press the dictation button; speech recognition is handled by the browser. Read-aloud starts only when you press **Listen** and uses browser speech synthesis.
+
+OpenCode sign-in stays in OpenCode’s local credential store. The assistant calls the local CLI with a chat-only agent by default. If you explicitly turn on web search for a reply, it uses a separate agent allowed to search and read web pages; it cannot use shell or file-editing tools. Search queries and pages are sent to your configured OpenCode search provider. OpenCode search setup depends on the provider you choose, and some providers charge per search. See [OpenCode web search setup](https://opencode.ai/v2/docs/websearch/) and check your provider’s billing before enabling it.
+
+For other providers, API keys are stored in the local server’s `.env` file and are never returned to the browser. The server binds to `127.0.0.1` so it is reachable from this computer only.
 
 ## Other platforms
 
-Install Node.js 20+ and run `npm start`. Select OpenCode CLI to reuse its local sign-in, or add a provider key in Settings. Open the URL printed by the server. If the selected port is busy, the app automatically tries the following ports.
-
-## Next steps
-
-Streaming responses, tools/actions, web search, long-term memory, authentication, and a richer model picker can be added on top of this provider layer.
+Install Node.js 20 or newer, run `npm start`, and open the URL printed by the server.

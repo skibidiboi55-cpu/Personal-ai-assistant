@@ -3,39 +3,77 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b0d12">
   <title>Personal AI Assistant</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main class="app">
-    <aside class="sidebar">
-      <div class="brand"><span class="orb"></span><div><strong>Personal AI</strong><small>Assistant</small></div></div>
-      <button id="newChat" class="new-chat">＋ New chat</button>
-      <button id="openSettings" class="settings-button">⚙ Settings</button>
-      <div class="side-note">Your conversations stay in this browser for now.</div>
-      <div class="status"><span id="dot"></span><span id="statusText">Connecting…</span></div>
+    <aside class="sidebar" id="sidebar" aria-label="Conversation history">
+      <div class="brand">
+        <span class="orb" aria-hidden="true">✳</span>
+        <div><strong>Personal AI</strong><small>Your private assistant</small></div>
+        <button id="closeSidebar" class="icon-button mobile-only" type="button" aria-label="Close conversations">×</button>
+      </div>
+      <button id="newChat" class="new-chat" type="button"><span aria-hidden="true">＋</span> New chat</button>
+      <label class="search-box">
+        <span aria-hidden="true">⌕</span>
+        <input id="conversationSearch" type="search" placeholder="Search conversations" autocomplete="off" aria-label="Search conversations">
+        <kbd>Ctrl K</kbd>
+      </label>
+      <div class="history-heading"><span>RECENTS</span><button id="exportAll" class="text-button" type="button">Export all</button></div>
+      <nav id="conversationList" class="conversation-list" aria-label="Your conversations"></nav>
+      <div class="sidebar-footer">
+        <button id="openSettings" class="settings-button" type="button"><span aria-hidden="true">⚙</span> Settings</button>
+        <p class="local-note">Chats and personal instructions stay in this browser.</p>
+        <div class="status"><span id="dot" aria-hidden="true"></span><span id="statusText">Connecting…</span></div>
+      </div>
     </aside>
-    <section class="chat">
-      <header>
-        <div><h1>What can I help with?</h1><p id="modelLabel">Loading model…</p></div>
+    <button id="sidebarScrim" class="sidebar-scrim" type="button" aria-label="Close conversations"></button>
+
+    <section class="chat" aria-label="Assistant chat">
+      <header class="chat-header">
+        <button id="mobileMenu" class="icon-button mobile-only" type="button" aria-label="Open conversations">☰</button>
+        <div class="conversation-heading">
+          <h1 id="conversationTitle">What can I help with?</h1>
+          <p id="modelLabel">Loading model…</p>
+        </div>
         <div class="header-actions">
           <select id="model" aria-label="Model"></select>
-          <button id="openSettingsTop" class="settings-icon" aria-label="Open settings" title="Settings">⚙</button>
+          <button id="exportCurrent" class="icon-button" type="button" aria-label="Export this chat" title="Export this chat">↧</button>
+          <button id="openSettingsTop" class="icon-button" type="button" aria-label="Open settings" title="Settings">⚙</button>
         </div>
       </header>
-      <div id="messages" class="messages"></div>
+
+      <div id="messages" class="messages" role="log" aria-label="Messages" aria-live="polite" aria-relevant="additions text"></div>
+
       <form id="composer" class="composer">
-        <textarea id="input" rows="1" placeholder="Message your assistant…" autocomplete="off"></textarea>
-        <button id="send" type="submit" aria-label="Send">↑</button>
+        <div id="attachmentList" class="attachment-list" aria-live="polite" hidden></div>
+        <div class="composer-options">
+          <label class="research-toggle" for="researchToggle">
+            <input id="researchToggle" type="checkbox" aria-describedby="researchAvailability">
+            <span aria-hidden="true">⌕</span>
+            Search the web for this reply
+          </label>
+          <span id="researchAvailability" class="research-note">OpenCode only · provider setup may be required · possible fees</span>
+        </div>
+        <div class="composer-row">
+          <input id="fileInput" type="file" hidden multiple accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.yaml,.yml,.js,.jsx,.ts,.tsx,.py,.html,.htm,.css,.scss,.sql,.sh,.ps1,.go,.rs,.java,.c,.h,.cpp,.toml,.ini,.conf,.env.example">
+          <button id="attachButton" class="composer-tool" type="button" aria-label="Attach text files" title="Attach text files">＋</button>
+          <textarea id="input" rows="1" placeholder="Message your assistant…" autocomplete="off" aria-label="Message your assistant"></textarea>
+          <button id="voiceButton" class="composer-tool voice-button" type="button" aria-label="Dictate a message" title="Dictate with your browser’s speech recognition">◉</button>
+          <button id="send" class="send-button" type="submit" aria-label="Send message" title="Send message">↑</button>
+        </div>
+        <div class="composer-foot"><span id="composerStatus">Enter to send · Shift+Enter for a new line</span><span>Model answers can be wrong. Check important details.</span></div>
       </form>
-      <div class="hint">Enter to send · Shift+Enter for a new line</div>
     </section>
   </main>
+
   <dialog id="settingsDialog" class="settings-dialog">
     <form id="settingsForm" class="settings-form">
       <div class="settings-heading">
         <div><p class="eyebrow">PERSONAL AI</p><h2>Settings</h2></div>
-        <button id="closeSettings" class="close-settings" type="button" aria-label="Close settings">×</button>
+        <button id="closeSettings" class="icon-button" type="button" aria-label="Close settings">×</button>
       </div>
       <label for="providerInput">Provider</label>
       <select id="providerInput" name="provider">
@@ -49,14 +87,23 @@
       <p id="apiKeyNote" class="field-note">Saved in the local server’s .env file. It is never sent back to the browser.</p>
       <label id="baseUrlLabel" for="baseUrlInput">API base URL</label>
       <input id="baseUrlInput" name="baseUrl" type="url" placeholder="https://api.openai.com/v1">
-      <label for="settingsModel">Model</label>
+      <label for="settingsModel">Default model</label>
       <select id="settingsModel" name="model" aria-label="Choose a model"></select>
       <div class="model-discovery">
         <span id="modelDiscoveryStatus">Looking for OpenCode CLI models…</span>
-        <button id="refreshModels" class="refresh-models" type="button">Refresh</button>
+        <button id="refreshModels" class="text-button" type="button">Refresh</button>
       </div>
-      <p id="modelProviderNote" class="field-note">Models come from <code>opencode models</code>. The API key above is used for chat.</p>
+      <p id="modelProviderNote" class="field-note">Models come from your provider configuration.</p>
+      <label for="personalInstructions">Personal instructions <span class="label-note">Only stored in this browser</span></label>
+      <textarea id="personalInstructions" name="personalInstructions" rows="4" maxlength="4000" placeholder="How should your assistant respond? For example: Keep answers concise, explain technical terms, and use metric units."></textarea>
+      <p class="field-note">Added to your prompts when you chat. Never uploaded as a provider setting.</p>
+      <p class="field-note">Voice dictation starts only when you press the microphone. Your browser handles speech recognition.</p>
+      <p class="field-note">Use Listen on an answer to hear it aloud. Speech is handled by your browser.</p>
       <label class="clear-key"><input id="clearKeyInput" type="checkbox" name="clearKey"> Remove the saved key for this provider</label>
+      <div class="data-actions">
+        <div><strong>Browser data</strong><span>Conversation history is stored locally in this browser.</span></div>
+        <button id="clearHistory" class="danger-button" type="button">Clear all chats</button>
+      </div>
       <div id="settingsError" class="settings-error" role="alert"></div>
       <div class="settings-actions">
         <button id="cancelSettings" class="cancel-button" type="button">Cancel</button>
