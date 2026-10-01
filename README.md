@@ -36,7 +36,7 @@ When you send a message, its text and attached file, image, or PDF contents are 
 
 OpenCode sign-in stays in OpenCode’s local credential store. The assistant calls the local CLI with a chat-only agent by default. For PDF messages, it stages temporary local copies for the request and removes them afterward; the PDF agent can read only those staged PDF paths, and cannot use shell or file-editing tools. If you explicitly turn on web search for a reply, it uses a separate agent allowed to search and read web pages; it cannot use shell or file-editing tools. Search queries and pages are sent to your configured OpenCode search provider. OpenCode search setup depends on the provider you choose, and some providers charge per search. See [OpenCode web search setup](https://opencode.ai/v2/docs/websearch/) and check your provider’s billing before enabling it.
 
-For other providers, API keys are stored in the local server’s `.env` file and are never returned to the browser. The server binds to `127.0.0.1` so it is reachable from this computer only.
+For other providers, API keys are stored in the local server’s `.env` file and are never returned to the browser. The server binds to `127.0.0.1` so it is reachable from this computer only. API requests also reject cross-site browser origins, and the app sets browser security headers to reduce cross-origin request and framing risks.
 
 ## Other platforms
 

@@ -485,8 +485,28 @@ function providerConfig() {
 }
 
 function json(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+  });
   res.end(JSON.stringify(body));
+}
+
+function isTrustedLocalApiRequest(req) {
+  const host = req.headers.host;
+  if (typeof host !== "string" || !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?$/i.test(host)) return false;
+  if (req.headers["sec-fetch-site"] === "cross-site") return false;
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    const parsedOrigin = new URL(origin);
+    const expectedOrigin = new URL(`http://${host}`);
+    return parsedOrigin.protocol === "http:" && parsedOrigin.origin === expectedOrigin.origin;
+  } catch {
+    return false;
+  }
 }
 
 async function readBody(req) {
@@ -654,6 +674,10 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost");
 
+    if (url.pathname.startsWith("/api/") && !isTrustedLocalApiRequest(req)) {
+      return json(res, 403, { error: "API requests must come from this local app." });
+    }
+
     if (req.method === "GET" && url.pathname === "/api/models") {
       return json(res, 200, await getOpenCodeModels(url.searchParams.get("refresh") === "1"));
     }
@@ -695,6 +719,9 @@ const server = http.createServer(async (req, res) => {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
       });
       res.on("close", () => {
         if (!res.writableEnded) controller.abort();
@@ -755,7 +782,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     const file = await readFile(filePath);
-    res.writeHead(200, { "Content-Type": mime[extname(filePath)] || "application/octet-stream" });
+    res.writeHead(200, {
+      "Content-Type": mime[extname(filePath)] || "application/octet-stream",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+    });
     res.end(req.method === "HEAD" ? undefined : file);
   } catch (error) {
     if (error.code === "ENOENT") return json(res, 404, { error: "File not found" });
