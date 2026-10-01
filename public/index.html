@@ -58,8 +58,8 @@
           <span id="researchAvailability" class="research-note">OpenCode only · provider setup may be required · possible fees</span>
         </div>
         <div class="composer-row">
-          <input id="fileInput" type="file" hidden multiple accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.yaml,.yml,.js,.jsx,.ts,.tsx,.py,.html,.htm,.css,.scss,.sql,.sh,.ps1,.go,.rs,.java,.c,.h,.cpp,.toml,.ini,.conf,.env.example">
-          <button id="attachButton" class="composer-tool" type="button" aria-label="Attach text files" title="Attach text files">＋</button>
+          <input id="fileInput" type="file" hidden multiple accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.yaml,.yml,.js,.jsx,.ts,.tsx,.py,.html,.htm,.css,.scss,.sql,.sh,.ps1,.go,.rs,.java,.c,.h,.cpp,.toml,.ini,.conf,.env.example,.pdf,application/pdf,.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp">
+          <button id="attachButton" class="composer-tool" type="button" aria-label="Attach files or images" title="Attach files or images">＋</button>
           <textarea id="input" rows="1" placeholder="Message your assistant…" autocomplete="off" aria-label="Message your assistant"></textarea>
           <button id="voiceButton" class="composer-tool voice-button" type="button" aria-label="Dictate a message" title="Dictate with your browser’s speech recognition">◉</button>
           <button id="send" class="send-button" type="submit" aria-label="Send message" title="Send message">↑</button>
@@ -99,6 +99,7 @@
       <p class="field-note">Added to your prompts when you chat. Never uploaded as a provider setting.</p>
       <p class="field-note">Voice dictation starts only when you press the microphone. Your browser handles speech recognition.</p>
       <p class="field-note">Use Listen on an answer to hear it aloud. Speech is handled by your browser.</p>
+      <p class="field-note">Attach PNG, JPEG, GIF, or WebP images up to 600 KB each. Choose a vision-capable model. PDFs up to 600 KB are supported with OpenCode CLI. All binary attachments together may total 900 KB; they are sent only when you send the message.</p>
       <label class="clear-key"><input id="clearKeyInput" type="checkbox" name="clearKey"> Remove the saved key for this provider</label>
       <div class="data-actions">
         <div><strong>Browser data</strong><span>Conversation history is stored locally in this browser.</span></div>

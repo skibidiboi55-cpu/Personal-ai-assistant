@@ -8,7 +8,7 @@ A local-first assistant with model choice, a searchable chat library, optional v
 - Discover models from OpenCode and choose a model per conversation.
 - Keep, search, rename, delete, and export conversations in this browser.
 - Save personal instructions in this browser and include them with your prompts.
-- Attach up to five small text, code, JSON, Markdown, or CSV files to a message.
+- Attach up to five small text/code files or PNG, JPEG, GIF, WebP, and PDF files. Images and PDFs are limited to 600 KB each and 900 KB total per request; PDF reading requires OpenCode CLI.
 - Read assistant Markdown and code blocks safely, and copy answers or code with one click.
 - Dictate a message in supported browsers after pressing the microphone button.
 - Listen to an answer using browser speech synthesis after pressing **Listen**.
@@ -32,9 +32,9 @@ For automatic restarts while editing, run `npm run dev` instead.
 
 Conversation history and personal instructions are stored in this browser’s local storage. Use **Export all** in the sidebar to download a backup, or **Export this chat** to save one conversation as Markdown. **Clear all chats** removes the locally saved conversation history.
 
-When you send a message, its text and any attached file contents are sent to the selected model provider to generate a reply. Attachments are read in the browser and are not sent until you send the message. Microphone access starts only after you press the dictation button; speech recognition is handled by the browser. Read-aloud starts only when you press **Listen** and uses browser speech synthesis.
+When you send a message, its text and attached file, image, or PDF contents are sent to the selected model provider to generate a reply. Attachments are read in the browser and are not sent until you send the message. Attachments are stored in this browser along with their conversation. OpenCode needs a vision-capable model to interpret images; OpenAI-compatible providers must support standard image inputs. PDF reading uses OpenCode’s read-only file tool and is limited to the attached PDFs. Microphone access starts only after you press the dictation button; speech recognition is handled by the browser. Read-aloud starts only when you press **Listen** and uses browser speech synthesis.
 
-OpenCode sign-in stays in OpenCode’s local credential store. The assistant calls the local CLI with a chat-only agent by default. If you explicitly turn on web search for a reply, it uses a separate agent allowed to search and read web pages; it cannot use shell or file-editing tools. Search queries and pages are sent to your configured OpenCode search provider. OpenCode search setup depends on the provider you choose, and some providers charge per search. See [OpenCode web search setup](https://opencode.ai/v2/docs/websearch/) and check your provider’s billing before enabling it.
+OpenCode sign-in stays in OpenCode’s local credential store. The assistant calls the local CLI with a chat-only agent by default. For PDF messages, it stages temporary local copies for the request and removes them afterward; the PDF agent can read only those staged PDF paths, and cannot use shell or file-editing tools. If you explicitly turn on web search for a reply, it uses a separate agent allowed to search and read web pages; it cannot use shell or file-editing tools. Search queries and pages are sent to your configured OpenCode search provider. OpenCode search setup depends on the provider you choose, and some providers charge per search. See [OpenCode web search setup](https://opencode.ai/v2/docs/websearch/) and check your provider’s billing before enabling it.
 
 For other providers, API keys are stored in the local server’s `.env` file and are never returned to the browser. The server binds to `127.0.0.1` so it is reachable from this computer only.
 

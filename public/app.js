@@ -42,8 +42,18 @@ const acceptedExtensions = new Set([
   "js", "jsx", "ts", "tsx", "py", "html", "htm", "css", "scss", "sql", "sh", "ps1",
   "go", "rs", "java", "c", "h", "cpp", "toml", "ini", "conf",
 ]);
+const imageMimeByExtension = new Map([
+  ["png", "image/png"], ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"],
+  ["gif", "image/gif"], ["webp", "image/webp"],
+]);
+const acceptedImageTypes = new Set(imageMimeByExtension.values());
+const pdfMimeType = "application/pdf";
 const maxFileBytes = 160 * 1024;
 const maxAttachmentBytes = 420 * 1024;
+const maxImageBytes = 600 * 1024;
+const maxImageAttachmentBytes = 900 * 1024;
+const maxBinaryAttachmentsPerPrompt = 5;
+const maxImagePromptChars = 1_200_000;
 const maxPromptChars = 600_000;
 
 let currentConfig = { provider: "opencode", model: "openrouter/auto", baseUrl: "" };
@@ -70,9 +80,20 @@ function cleanMessages(value) {
       error: message.error === true,
       attachments: Array.isArray(message.attachments)
         ? message.attachments
-            .filter((file) => file && typeof file.name === "string" && typeof file.content === "string")
+            .filter((file) => file && typeof file.name === "string" && (
+              typeof file.content === "string" || (file.kind === "image" && acceptedImageTypes.has(file.mimeType) && typeof file.dataBase64 === "string")
+              || (file.kind === "pdf" && file.mimeType === pdfMimeType && typeof file.dataBase64 === "string")
+            ))
             .slice(0, 5)
-            .map((file) => ({ name: file.name.slice(0, 180), content: file.content.slice(0, maxFileBytes) }))
+            .map((file) => file.kind === "image" || file.kind === "pdf"
+              ? {
+                  name: file.name.slice(0, 180),
+                  kind: file.kind,
+                  mimeType: file.mimeType,
+                  dataBase64: file.dataBase64.slice(0, Math.ceil(maxImageBytes / 3) * 4 + 8),
+                  size: Math.min(maxImageBytes, Number(file.size) || 0),
+                }
+              : { name: file.name.slice(0, 180), content: file.content.slice(0, maxFileBytes) })
         : [],
     }));
 }
@@ -461,7 +482,7 @@ function createWelcome() {
   const suggestions = [
     ["Make a plan", "Break a goal into clear next steps."],
     ["Explain something", "Get a clear explanation at your level."],
-    ["Work with a file", "Attach notes, code, or a spreadsheet export."],
+    ["Work with a file", "Attach notes, code, an image, or a PDF."],
     ["Write or revise", "Draft a message, outline, or first version."],
   ];
   const grid = document.createElement("div");
@@ -503,12 +524,20 @@ function renderMessages() {
     else bubble.textContent = message.content;
     body.append(bubble);
     if (message.attachments?.length) {
+      for (const file of message.attachments.filter((item) => item.kind === "image" && item.dataBase64)) {
+        const preview = document.createElement("img");
+        preview.className = "message-image";
+        preview.src = `data:${file.mimeType};base64,${file.dataBase64}`;
+        preview.alt = `Attached image: ${file.name}`;
+        preview.loading = "lazy";
+        body.append(preview);
+      }
       const chips = document.createElement("div");
       chips.className = "file-chips";
       for (const file of message.attachments) {
         const chip = document.createElement("span");
         chip.className = "file-chip";
-        chip.textContent = `▤ ${file.name}`;
+        chip.textContent = `${file.kind === "image" ? "▧" : file.kind === "pdf" ? "PDF" : "▤"} ${file.name}`;
         chips.append(chip);
       }
       body.append(chips);
@@ -696,15 +725,43 @@ async function readEventStream(response, onToken) {
 }
 
 function attachmentPrompt(file) {
+  if (file.kind === "image") return `\n\n[Attached image: ${file.name}]`;
+  if (file.kind === "pdf") return `\n\n[Attached PDF: ${file.name}]`;
   return `\n\n[Attached file: ${file.name}]\n${file.content}`;
 }
 
 function apiMessages(sourceMessages = messages) {
   const instructions = (localStorage.getItem(instructionsStorageKey) || "").trim();
-  const selectedMessages = sourceMessages.slice(-40).map((message) => ({
+  const selectedMessages = sourceMessages.slice(-40).map((message, messageIndex) => ({
     role: message.role,
     content: `${message.content}${(message.attachments || []).map(attachmentPrompt).join("")}`,
+    binaries: message.role === "user"
+      ? (message.attachments || []).filter((file) => (
+          (file.kind === "image" && acceptedImageTypes.has(file.mimeType)) || (file.kind === "pdf" && file.mimeType === pdfMimeType)
+        ) && typeof file.dataBase64 === "string")
+          .map((file, index) => ({ key: `${messageIndex}:${index}`, name: file.name, kind: file.kind, mimeType: file.mimeType, dataBase64: file.dataBase64 }))
+      : [],
   }));
+  let binaryChars = 0;
+  let binaryCount = 0;
+  const includedBinaries = new Set();
+  for (let messageIndex = selectedMessages.length - 1; messageIndex >= 0; messageIndex--) {
+    const item = selectedMessages[messageIndex];
+    for (let binaryIndex = item.binaries.length - 1; binaryIndex >= 0; binaryIndex--) {
+      const binary = item.binaries[binaryIndex];
+      if (binaryCount >= maxBinaryAttachmentsPerPrompt || binaryChars + binary.dataBase64.length > maxImagePromptChars) continue;
+      binaryChars += binary.dataBase64.length;
+      binaryCount++;
+      includedBinaries.add(binary.key);
+    }
+  }
+  for (const item of selectedMessages) {
+    const omitted = item.binaries.filter((binary) => !includedBinaries.has(binary.key));
+    item.images = item.binaries.filter((binary) => includedBinaries.has(binary.key) && binary.kind === "image");
+    item.pdfs = item.binaries.filter((binary) => includedBinaries.has(binary.key) && binary.kind === "pdf");
+    delete item.binaries;
+    if (omitted.length) item.content += `\n\n[${omitted.length} older image or PDF attachment(s) were left out to keep this request within size limits.]`;
+  }
   let charBudget = maxPromptChars;
   const recent = [];
   for (let index = selectedMessages.length - 1; index >= 0; index--) {
@@ -724,6 +781,42 @@ function createFileAttachment(file, content) {
   return { id: createId(), name: file.name.replace(/[\r\n]/g, " ").slice(0, 180), content };
 }
 
+function createImageAttachment(file, mimeType, dataBase64) {
+  return {
+    id: createId(),
+    name: file.name.replace(/[\r\n]/g, " ").slice(0, 180),
+    kind: "image",
+    mimeType,
+    dataBase64,
+    size: file.size,
+  };
+}
+
+function createPdfAttachment(file, dataBase64) {
+  return {
+    id: createId(),
+    name: file.name.replace(/[\r\n]/g, " ").slice(0, 180),
+    kind: "pdf",
+    mimeType: pdfMimeType,
+    dataBase64,
+    size: file.size,
+  };
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      const comma = dataUrl.indexOf(",");
+      if (comma < 0) reject(new Error("Could not encode image."));
+      else resolve(dataUrl.slice(comma + 1));
+    };
+    reader.onerror = () => reject(new Error("Could not read image."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function renderPendingAttachments() {
   attachmentList.replaceChildren();
   attachmentList.hidden = pendingAttachments.length === 0;
@@ -731,7 +824,9 @@ function renderPendingAttachments() {
     const pill = document.createElement("div");
     pill.className = "attachment-pill";
     const name = document.createElement("span");
-    name.textContent = `${file.name} · ${Math.ceil(new Blob([file.content]).size / 1024)} KB`;
+    const size = file.kind === "image" ? file.size : new Blob([file.content]).size;
+    const icon = file.kind === "image" ? "▧ " : file.kind === "pdf" ? "PDF · " : "";
+    name.textContent = `${icon}${file.name} · ${Math.ceil(size / 1024)} KB`;
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = "×";
@@ -745,17 +840,46 @@ function renderPendingAttachments() {
 async function addSelectedFiles(fileList) {
   for (const file of Array.from(fileList || [])) {
     const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
-    if (!acceptedExtensions.has(extension) && !file.type.startsWith("text/")) {
-      setComposerStatus(`${file.name}: choose a text, code, JSON, or CSV file.`, 6000);
+    const mimeType = acceptedImageTypes.has(file.type) ? file.type : imageMimeByExtension.get(extension);
+    const isImage = Boolean(mimeType);
+    const isPdf = extension === "pdf" || file.type === pdfMimeType;
+    if (!isImage && !isPdf && !acceptedExtensions.has(extension) && !file.type.startsWith("text/")) {
+      setComposerStatus(`${file.name}: choose a text/code file, PDF, PNG, JPEG, GIF, or WebP image.`, 6000);
+      continue;
+    }
+    if (pendingAttachments.length >= 5) {
+      setComposerStatus("Attach up to 5 files or images to one message.", 6000);
+      continue;
+    }
+    if (isImage || isPdf) {
+      if (isPdf && currentConfig.provider !== "opencode") {
+        setComposerStatus("PDF reading currently requires the OpenCode CLI provider.", 6000);
+        continue;
+      }
+      if (file.size > maxImageBytes) {
+        setComposerStatus(`${file.name}: images and PDFs must be 600 KB or smaller.`, 6000);
+        continue;
+      }
+      const currentBinaryBytes = pendingAttachments.filter((item) => item.kind === "image" || item.kind === "pdf").reduce((sum, item) => sum + item.size, 0);
+      if (currentBinaryBytes + file.size > maxImageAttachmentBytes) {
+        setComposerStatus("Images and PDFs attached to one message must total 900 KB or less.", 6000);
+        continue;
+      }
+      try {
+        const dataBase64 = await readFileAsBase64(file);
+        pendingAttachments.push(isPdf ? createPdfAttachment(file, dataBase64) : createImageAttachment(file, mimeType, dataBase64));
+      } catch (error) {
+        setComposerStatus(`${file.name}: ${error.message}`, 6000);
+      }
       continue;
     }
     if (file.size > maxFileBytes) {
       setComposerStatus(`${file.name}: files must be 160 KB or smaller.`, 6000);
       continue;
     }
-    const currentBytes = pendingAttachments.reduce((sum, item) => sum + new Blob([item.content]).size, 0);
-    if (currentBytes + file.size > maxAttachmentBytes || pendingAttachments.length >= 5) {
-      setComposerStatus("Attach up to 5 files with a combined size of 420 KB.", 6000);
+    const currentBytes = pendingAttachments.filter((item) => item.kind !== "image" && item.kind !== "pdf").reduce((sum, item) => sum + new Blob([item.content]).size, 0);
+    if (currentBytes + file.size > maxAttachmentBytes) {
+      setComposerStatus("Text files attached to one message must total 420 KB or less.", 6000);
       continue;
     }
     try {
@@ -771,7 +895,7 @@ async function addSelectedFiles(fileList) {
   }
   fileInput.value = "";
   renderPendingAttachments();
-  if (pendingAttachments.length) setComposerStatus("Attached files are sent to your selected model only when you send this message.", 7000);
+  if (pendingAttachments.length) setComposerStatus("Attachments are sent to your selected model only when you send this message.", 7000);
 }
 
 async function openSettings() {
@@ -818,7 +942,11 @@ function exportConversation(conversation = activeConversation()) {
       `## ${message.role === "user" ? "You" : "Assistant"}`,
       "",
       message.content,
-      ...(message.attachments || []).map((file) => [`### Attached file: ${file.name}`, "", "```text", file.content, "```", ""]).flat(),
+      ...(message.attachments || []).map((file) => file.kind === "image"
+        ? [`### Attached image: ${file.name}`, "", `Image data is stored in this browser (${file.mimeType}).`, ""]
+        : file.kind === "pdf"
+          ? [`### Attached PDF: ${file.name}`, "", "PDF data is stored in this browser and is not included in this Markdown export.", ""]
+          : [`### Attached file: ${file.name}`, "", "```text", file.content, "```", ""]).flat(),
       "",
     ]),
   ].join("\n");
@@ -1018,7 +1146,7 @@ form.addEventListener("submit", async (event) => {
   if ((!text && !pendingAttachments.length) || isSending) return;
   const requestConversationId = activeConversationId;
   stopSpeech();
-  const attachments = pendingAttachments.map(({ name, content }) => ({ name, content }));
+  const attachments = pendingAttachments.map((file) => ({ ...file }));
   const research = researchToggle.checked;
   researchToggle.checked = false;
   const prompt = text || `Please review the attached ${attachments.length === 1 ? "file" : "files"}.`;
