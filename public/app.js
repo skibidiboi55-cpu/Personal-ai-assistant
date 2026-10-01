@@ -15,7 +15,6 @@ const apiKeyNote = document.querySelector("#apiKeyNote");
 const baseUrlInput = document.querySelector("#baseUrlInput");
 const baseUrlLabel = document.querySelector("#baseUrlLabel");
 const settingsModel = document.querySelector("#settingsModel");
-const modelOptions = document.querySelector("#modelOptions");
 const modelDiscoveryStatus = document.querySelector("#modelDiscoveryStatus");
 const settingsError = document.querySelector("#settingsError");
 const clearKeyInput = document.querySelector("#clearKeyInput");
@@ -105,11 +104,23 @@ function populateChatModels(preferredModel = currentConfig.model) {
 function populateSettingsModels(preferredModel = settingsModel.value) {
   const choices = modelsForProvider(providerInput.value);
   const selected = preferredModel || openCodeDefaultModel || currentConfig.model;
-  modelOptions.innerHTML = "";
-  for (const id of choices) {
+  const values = [...choices];
+  if (selected && !values.includes(selected)) values.unshift(selected);
+  settingsModel.replaceChildren();
+  if (!values.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No models found";
+    option.disabled = true;
+    option.selected = true;
+    settingsModel.append(option);
+    return;
+  }
+  for (const id of values) {
     const option = document.createElement("option");
     option.value = id;
-    modelOptions.append(option);
+    option.textContent = id === openCodeDefaultModel ? `${id} · OpenCode default` : id;
+    settingsModel.append(option);
   }
   settingsModel.value = selected || "";
 }

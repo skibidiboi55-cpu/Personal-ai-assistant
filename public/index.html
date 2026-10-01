@@ -50,8 +50,7 @@
       <label id="baseUrlLabel" for="baseUrlInput">API base URL</label>
       <input id="baseUrlInput" name="baseUrl" type="url" placeholder="https://api.openai.com/v1">
       <label for="settingsModel">Model</label>
-      <input id="settingsModel" name="model" list="modelOptions" autocomplete="off" placeholder="Choose or type a model ID">
-      <datalist id="modelOptions"></datalist>
+      <select id="settingsModel" name="model" aria-label="Choose a model"></select>
       <div class="model-discovery">
         <span id="modelDiscoveryStatus">Looking for OpenCode CLI models…</span>
         <button id="refreshModels" class="refresh-models" type="button">Refresh</button>
