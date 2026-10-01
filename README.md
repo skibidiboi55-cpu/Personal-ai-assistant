@@ -5,7 +5,7 @@ A local-first assistant with model choice, a searchable chat library, optional v
 ## What it can do
 
 - Use OpenCode CLI with its existing sign-in, or connect OpenRouter, another OpenAI-compatible API, or Ollama.
-- Discover models from OpenCode and choose a model per conversation.
+- Discover models from OpenCode and choose a model per conversation. Search the Settings model list by provider or model ID to find models in large catalogs.
 - Keep, search, rename, delete, and export conversations in this browser.
 - Save personal instructions in this browser and include them with your prompts.
 - Attach up to five small text/code files or PNG, JPEG, GIF, WebP, and PDF files. Images and PDFs are limited to 600 KB each and 900 KB total per request; PDF reading requires OpenCode CLI.

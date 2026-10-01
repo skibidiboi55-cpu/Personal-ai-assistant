@@ -18,6 +18,7 @@ const apiKeyNote = document.querySelector("#apiKeyNote");
 const baseUrlInput = document.querySelector("#baseUrlInput");
 const baseUrlLabel = document.querySelector("#baseUrlLabel");
 const settingsModel = document.querySelector("#settingsModel");
+const settingsModelSearch = document.querySelector("#settingsModelSearch");
 const modelDiscoveryStatus = document.querySelector("#modelDiscoveryStatus");
 const settingsError = document.querySelector("#settingsError");
 const clearKeyInput = document.querySelector("#clearKeyInput");
@@ -249,15 +250,16 @@ function populateChatModels(preferredModel = currentConfig.model) {
 }
 
 function populateSettingsModels(preferredModel = settingsModel.value) {
-  const choices = modelsForProvider(providerInput.value);
+  const query = settingsModelSearch.value.trim().toLocaleLowerCase();
+  const choices = modelsForProvider(providerInput.value).filter((id) => !query || id.toLocaleLowerCase().includes(query));
   const selected = preferredModel || openCodeDefaultModel || currentConfig.model;
   const values = [...choices];
-  if (selected && !values.includes(selected)) values.unshift(selected);
+  if (!query && selected && !values.includes(selected)) values.unshift(selected);
   settingsModel.replaceChildren();
   if (!values.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No models found";
+    option.textContent = query ? "No matching models" : "No models found";
     option.disabled = true;
     option.selected = true;
     settingsModel.append(option);
@@ -296,6 +298,10 @@ function updateProviderFields() {
     : "Choose a model available from the selected provider. API keys stay on this server.";
   populateSettingsModels();
 }
+
+settingsModelSearch.addEventListener("input", () => {
+  populateSettingsModels(settingsModel.value || activeConversation()?.model || currentConfig.model);
+});
 
 async function loadModels(refresh = false) {
   modelDiscoveryStatus.textContent = "Looking for OpenCode CLI models…";
@@ -905,6 +911,7 @@ async function openSettings() {
   providerInput.value = currentConfig.provider;
   baseUrlInput.value = currentConfig.baseUrl || "";
   settingsModel.value = activeConversation()?.model || modelSelect.value || currentConfig.model;
+  settingsModelSearch.value = "";
   personalInstructions.value = localStorage.getItem(instructionsStorageKey) || "";
   updateProviderFields();
   if (!discoveredModels.length) await loadModels();
