@@ -11,13 +11,17 @@
     <aside class="sidebar">
       <div class="brand"><span class="orb"></span><div><strong>Personal AI</strong><small>Assistant</small></div></div>
       <button id="newChat" class="new-chat">＋ New chat</button>
+      <button id="openSettings" class="settings-button">⚙ Settings</button>
       <div class="side-note">Your conversations stay in this browser for now.</div>
       <div class="status"><span id="dot"></span><span id="statusText">Connecting…</span></div>
     </aside>
     <section class="chat">
       <header>
         <div><h1>What can I help with?</h1><p id="modelLabel">Loading model…</p></div>
-        <select id="model" aria-label="Model"></select>
+        <div class="header-actions">
+          <select id="model" aria-label="Model"></select>
+          <button id="openSettingsTop" class="settings-icon" aria-label="Open settings" title="Settings">⚙</button>
+        </div>
       </header>
       <div id="messages" class="messages"></div>
       <form id="composer" class="composer">
@@ -27,6 +31,39 @@
       <div class="hint">Enter to send · Shift+Enter for a new line</div>
     </section>
   </main>
+  <dialog id="settingsDialog" class="settings-dialog">
+    <form id="settingsForm" class="settings-form">
+      <div class="settings-heading">
+        <div><p class="eyebrow">PERSONAL AI</p><h2>Settings</h2></div>
+        <button id="closeSettings" class="close-settings" type="button" aria-label="Close settings">×</button>
+      </div>
+      <label for="providerInput">Provider</label>
+      <select id="providerInput" name="provider">
+        <option value="openrouter">OpenRouter</option>
+        <option value="openai-compatible">OpenAI-compatible API</option>
+        <option value="ollama">Ollama (local)</option>
+      </select>
+      <label for="apiKeyInput">API key</label>
+      <input id="apiKeyInput" name="apiKey" type="password" autocomplete="new-password" placeholder="Paste your provider key">
+      <p class="field-note">Saved in the local server’s .env file. It is never sent back to the browser.</p>
+      <label id="baseUrlLabel" for="baseUrlInput">API base URL</label>
+      <input id="baseUrlInput" name="baseUrl" type="url" placeholder="https://api.openai.com/v1">
+      <label for="settingsModel">Model</label>
+      <input id="settingsModel" name="model" list="modelOptions" autocomplete="off" placeholder="Choose or type a model ID">
+      <datalist id="modelOptions"></datalist>
+      <div class="model-discovery">
+        <span id="modelDiscoveryStatus">Looking for OpenCode CLI models…</span>
+        <button id="refreshModels" class="refresh-models" type="button">Refresh</button>
+      </div>
+      <p class="field-note">Models come from <code>opencode models</code>. The API key above is used for chat.</p>
+      <label class="clear-key"><input id="clearKeyInput" type="checkbox" name="clearKey"> Remove the saved key for this provider</label>
+      <div id="settingsError" class="settings-error" role="alert"></div>
+      <div class="settings-actions">
+        <button id="cancelSettings" class="cancel-button" type="button">Cancel</button>
+        <button class="save-settings" type="submit">Save settings</button>
+      </div>
+    </form>
+  </dialog>
   <script src="/app.js"></script>
 </body>
 </html>
